@@ -34,7 +34,7 @@ To run this project locally, you will need:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/e-commerce-api.git
+git clone https://github.com/MdAkash3135/e-commerce-api.git
 cd e-commerce-api
  ```
 
