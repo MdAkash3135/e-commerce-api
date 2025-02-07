@@ -68,14 +68,14 @@ def protected_route(token: str = Depends(oauth2_scheme), db: Session = Depends(g
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/categories/", response_model=schemas.CategoryResponse)
-def create_category(category: schemas.CategoryCreate, db: Session = Depends(get_db)):
+def create_category(category: schemas.CategoryCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         return crud.create_category(db, category)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/categories/", response_model=List[schemas.CategoryResponse])
-def get_categories(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_categories(token: str = Depends(oauth2_scheme),  db: Session = Depends(get_db)):
     try:
         return crud.get_categories(db)
     except Exception as e:
@@ -86,7 +86,7 @@ def get_categories(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
 # ----------------------
 
 @app.post("/products/", response_model=schemas.ProductResponse)
-def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)):
+def create_product(product: schemas.ProductCreate,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         return crud.create_product(db, product)
     except Exception as e:
@@ -100,6 +100,7 @@ def get_products(
     in_stock: bool = None, 
     skip: int = 0, 
     limit: int = 10, 
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     try:
@@ -109,7 +110,7 @@ def get_products(
 
 # Get Cart for a User
 @app.get("/{user_id}", response_model=schemas.CartResponse)
-def get_cart(user_id: int, db: Session = Depends(get_db)):
+def get_cart(user_id: int, token: str = Depends(oauth2_scheme),db: Session = Depends(get_db)):
     try:
         cart = db.query(Cart).filter(Cart.user_id == user_id).first()
         if not cart:
@@ -123,7 +124,7 @@ def get_cart(user_id: int, db: Session = Depends(get_db)):
 
 # Add Item to Cart
 @app.post("/{user_id}/add", response_model=schemas.CartItemResponse)
-def add_to_cart(user_id: int, item: schemas.CartItemCreate, db: Session = Depends(get_db)):
+def add_to_cart(user_id: int, item: schemas.CartItemCreate,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         cart = db.query(Cart).filter(Cart.user_id == user_id).first()
         if not cart:
@@ -154,7 +155,7 @@ def add_to_cart(user_id: int, item: schemas.CartItemCreate, db: Session = Depend
 
 # Update Cart Item Quantity
 @app.put("/{user_id}/update/{cart_item_id}", response_model=schemas.CartItemResponse)
-def update_cart_item(user_id: int, cart_item_id: int, quantity: int, db: Session = Depends(get_db)):
+def update_cart_item(user_id: int, cart_item_id: int, quantity: int, token: str = Depends(oauth2_scheme),db: Session = Depends(get_db)):
     try:
         cart_item = db.query(CartItem).filter(CartItem.id == cart_item_id).first()
         if not cart_item:
@@ -169,7 +170,7 @@ def update_cart_item(user_id: int, cart_item_id: int, quantity: int, db: Session
 
 # Remove Item from Cart
 @app.delete("/{user_id}/remove/{cart_item_id}")
-def remove_cart_item(user_id: int, cart_item_id: int, db: Session = Depends(get_db)):
+def remove_cart_item(user_id: int, cart_item_id: int,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         cart_item = db.query(CartItem).filter(CartItem.id == cart_item_id).first()
         if not cart_item:
@@ -182,7 +183,7 @@ def remove_cart_item(user_id: int, cart_item_id: int, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/users/", response_model=UserInDB)
-def create_user_endpoint(user: UserCreate, db: Session = Depends(get_db)):
+def create_user_endpoint(user: UserCreate,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         db_user = get_user_by_username(db, user.username)
         if db_user:
@@ -192,7 +193,7 @@ def create_user_endpoint(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/users/{user_id}", response_model=UserInDB)
-def get_user_endpoint(user_id: int, db: Session = Depends(get_db)):
+def get_user_endpoint(user_id: int,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         db_user = get_user_by_id(db, user_id)
         if db_user is None:
@@ -202,7 +203,7 @@ def get_user_endpoint(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/users/{user_id}", response_model=UserInDB)
-def update_user_endpoint(user_id: int, user: UserUpdate, db: Session = Depends(get_db)):
+def update_user_endpoint(user_id: int, user: UserUpdate,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         db_user = update_user(db, user_id=user_id, username=user.username, email=user.email, password=user.password)
         if db_user is None:
@@ -211,8 +212,8 @@ def update_user_endpoint(user_id: int, user: UserUpdate, db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/users/{user_id}", response_model=UserInDB)
-def delete_user_endpoint(user_id: int, db: Session = Depends(get_db)):
+@app.delete("/users/{user_id}",  response_model=UserInDB)
+def delete_user_endpoint(user_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         db_user = delete_user(db, user_id)
         if db_user is None:
@@ -222,7 +223,7 @@ def delete_user_endpoint(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/checkout/{user_id}", response_model=OrderInDB)
-def checkout(user_id: int, cart_id: int, db: Session = Depends(get_db)):
+def checkout(user_id: int, cart_id: int,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         order = place_order(db, user_id, cart_id)
         if order is None:
