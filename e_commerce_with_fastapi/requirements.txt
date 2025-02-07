@@ -7,3 +7,4 @@ passlib[bcrypt]==1.7.4
 pyjwt==2.6.0
 databases==0.7.3
 psycopg2-binary
+python-jose[cryptography]
