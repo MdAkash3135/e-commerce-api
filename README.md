@@ -35,7 +35,7 @@ To run this project locally, you will need:
 
 ```bash
 git clone https://github.com/MdAkash3135/e-commerce-api.git
-cd e-commerce-api
+cd e-commerce-api/e_commerce_with_fastapi
  ```
 
 ### 2. Create a Virtual Environment
