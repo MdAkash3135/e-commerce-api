@@ -1,233 +1,238 @@
-from typing import List, Union
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-import schemas
-import crud
-import models
-from fastapi import APIRouter, Depends, HTTPException
-from crud import create_user, get_user_by_username, update_user, delete_user, get_user_by_id
-from crud import *
-from models import *
-from schemas import *
-from database import engine, SessionLocal, get_db
-from fastapi.security import OAuth2PasswordBearer
-from auth import create_access_token, verify_access_token
-
-
-app = FastAPI()
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
-@app.post("/register", response_model=UserCreate)
-def register(user: UserCreate, db: Session = Depends(get_db)):
-    try:
-        db_user = db.query(User).filter(User.username == user.username).first()
+from sqlalchemy.exc import IntegrityError
+from decimal import Decimal
+from passlib.context import CryptContext
+import models, schemas
+ 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ 
+ 
+class UserCRUD:
+    @staticmethod
+    def create_user(db: Session, username: str, email: str, password: str):
+        hashed_password = pwd_context.hash(password)
+        db_user = models.User(username=username, email=email, password=hashed_password)
+        db.add(db_user)
+        try:
+            db.commit()
+            db.refresh(db_user)
+            return db_user
+        except IntegrityError:
+            db.rollback()
+            return None  
+ 
+    @staticmethod
+    def get_user_by_id(db: Session, user_id: int):
+        return db.query(models.User).filter(models.User.id == user_id).first()
+ 
+    @staticmethod
+    def get_user_by_username(db: Session, username: str):
+        return db.query(models.User).filter(models.User.username == username).first()
+ 
+    @staticmethod
+    def get_user_by_email(db: Session, email: str):
+        return db.query(models.User).filter(models.User.email == email).first()
+ 
+    @staticmethod
+    def update_user(db: Session, user_id: int, username: str = None, email: str = None, password: str = None):
+        db_user = db.query(models.User).filter(models.User.id == user_id).first()
         if db_user:
-            raise HTTPException(status_code=400, detail="Username already taken")
-
-        db_user_by_email = db.query(User).filter(User.email == user.email).first()
-        if db_user_by_email:
-            raise HTTPException(status_code=400, detail="Email already taken")
-
-        new_user = create_user(db, user.username, user.email, user.password)
-        return new_user
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/login", response_model=Token)
-def login(user: UserLogin, db: Session = Depends(get_db)):
-    try:
-        db_user = authenticate_user(db, user.username, user.password)
-        if db_user is None:
-            raise HTTPException(status_code=401, detail="Invalid username or password")
-
-        access_token = create_access_token(data={"sub": str(db_user.id)})
-        return {"access_token": access_token, "token_type": "bearer"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/protected")
-def protected_route(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        payload = verify_access_token(token)
-        if payload is None:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-        user_id = payload.get("sub")
-        db_user = db.query(User).filter(User.id == user_id).first()
-        if db_user is None:
-            raise HTTPException(status_code=401, detail="User not found")
-
-        return {"message": f"Hello {db_user.username}, this is a protected route."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/categories/", response_model=schemas.CategoryResponse)
-def create_category(category: schemas.CategoryCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        return crud.create_category(db, category)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/categories/", response_model=List[schemas.CategoryResponse])
-def get_categories(token: str = Depends(oauth2_scheme),  db: Session = Depends(get_db)):
-    try:
-        return crud.get_categories(db)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ----------------------
-# PRODUCT ROUTES
-# ----------------------
-
-@app.post("/products/", response_model=schemas.ProductResponse)
-def create_product(product: schemas.ProductCreate,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        return crud.create_product(db, product)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/products/", response_model=List[schemas.ProductResponse])
-def get_products(
-    category_id: int = None, 
-    min_price: float = None, 
-    max_price: float = None, 
-    in_stock: bool = None, 
-    skip: int = 0, 
-    limit: int = 10, 
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-):
-    try:
-        return crud.get_products(db, category_id, min_price, max_price, in_stock, skip, limit)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Get Cart for a User
-@app.get("/{user_id}", response_model=schemas.CartResponse)
-def get_cart(user_id: int, token: str = Depends(oauth2_scheme),db: Session = Depends(get_db)):
-    try:
-        cart = db.query(Cart).filter(Cart.user_id == user_id).first()
+            if username:
+                db_user.username = username
+            if email:
+                db_user.email = email
+            if password:
+                db_user.password = pwd_context.hash(password)  
+            db.commit()
+            db.refresh(db_user)
+            return db_user
+        return None
+ 
+    @staticmethod
+    def delete_user(db: Session, user_id: int):
+        db_user = db.query(models.User).filter(models.User.id == user_id).first()
+        if db_user:
+            db.delete(db_user)
+            db.commit()
+            return db_user
+        return None
+ 
+ 
+class CategoryCRUD:
+    @staticmethod
+    def create_category(db: Session, category: schemas.CategoryCreate):
+        new_category = models.Category(name=category.name)
+        db.add(new_category)
+        db.commit()
+        db.refresh(new_category)
+        return new_category
+ 
+    @staticmethod
+    def get_categories(db: Session):
+        return db.query(models.Category).all()
+ 
+    @staticmethod
+    def update_category(db: Session, category_id: int, category_update: schemas.CategoryCreate):
+        category = db.query(models.Category).filter(models.Category.id == category_id).first()
+        if category:
+            category.name = category_update.name
+            db.commit()
+            db.refresh(category)
+            return category
+        return None
+ 
+    @staticmethod
+    def delete_category(db: Session, category_id: int):
+        category = db.query(models.Category).filter(models.Category.id == category_id).first()
+        if category:
+            db.delete(category)
+            db.commit()
+            return True
+        return False
+ 
+ 
+class ProductCRUD:
+    @staticmethod
+    def create_product(db: Session, product: schemas.ProductCreate):
+        new_product = models.Product(
+            name=product.name,
+            price=product.price,
+            stock=product.stock,
+            category_id=product.category_id
+        )
+        db.add(new_product)
+        db.commit()
+        db.refresh(new_product)
+        return new_product
+ 
+    @staticmethod
+    def get_products(db: Session, category_id: int = None, min_price: float = None, max_price: float = None, in_stock: bool = None, skip: int = 0, limit: int = 10):
+        query = db.query(models.Product)
+        if category_id:
+            query = query.filter(models.Product.category_id == category_id)
+        if min_price:
+            query = query.filter(models.Product.price >= min_price)
+        if max_price:
+            query = query.filter(models.Product.price <= max_price)
+        if in_stock is not None:
+            query = query.filter(models.Product.stock > 0 if in_stock else models.Product.stock == 0)
+ 
+        return query.offset(skip).limit(limit).all()
+ 
+    @staticmethod
+    def update_product(db: Session, product_id: int, product_update: schemas.ProductCreate):
+        product = db.query(models.Product).filter(models.Product.id == product_id).first()
+        if product:
+            product.name = product_update.name
+            product.price = product_update.price
+            product.stock = product_update.stock
+            product.category_id = product_update.category_id
+            db.commit()
+            db.refresh(product)
+            return product
+        return None
+ 
+    @staticmethod
+    def delete_product(db: Session, product_id: int):
+        product = db.query(models.Product).filter(models.Product.id == product_id).first()
+        if product:
+            db.delete(product)
+            db.commit()
+            return True
+        return False
+ 
+ 
+class CartCRUD:
+    @staticmethod
+    def get_cart(db: Session, user_id: int):
+        cart = db.query(models.Cart).filter(models.Cart.user_id == user_id).first()
         if not cart:
-            cart = Cart(user_id=user_id)
+            cart = models.Cart(user_id=user_id)
             db.add(cart)
             db.commit()
             db.refresh(cart)
         return cart
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Add Item to Cart
-@app.post("/{user_id}/add", response_model=schemas.CartItemResponse)
-def add_to_cart(user_id: int, item: schemas.CartItemCreate,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        cart = db.query(Cart).filter(Cart.user_id == user_id).first()
+ 
+    @staticmethod
+    def add_to_cart(db: Session, user_id: int, item: schemas.CartItemCreate):
+        cart = db.query(models.Cart).filter(models.Cart.user_id == user_id).first()
         if not cart:
-            cart = Cart(user_id=user_id)
+            cart = models.Cart(user_id=user_id)
             db.add(cart)
             db.commit()
             db.refresh(cart)
-
-        product = db.query(Product).filter(Product.id == item.product_id).first()
+ 
+        product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
         if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
-
-        cart_item = db.query(CartItem).filter(
-            CartItem.cart_id == cart.id, CartItem.product_id == item.product_id
+            raise ValueError("Product not found")
+ 
+        cart_item = db.query(models.CartItem).filter(
+            models.CartItem.cart_id == cart.id, models.CartItem.product_id == item.product_id
         ).first()
-
+ 
         if cart_item:
             cart_item.quantity += item.quantity
         else:
-            cart_item = CartItem(cart_id=cart.id, product_id=item.product_id, quantity=item.quantity)
+            cart_item = models.CartItem(cart_id=cart.id, product_id=item.product_id, quantity=item.quantity)
             db.add(cart_item)
-
+ 
         db.commit()
         db.refresh(cart_item)
         return cart_item
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Update Cart Item Quantity
-@app.put("/{user_id}/update/{cart_item_id}", response_model=schemas.CartItemResponse)
-def update_cart_item(user_id: int, cart_item_id: int, quantity: int, token: str = Depends(oauth2_scheme),db: Session = Depends(get_db)):
-    try:
-        cart_item = db.query(CartItem).filter(CartItem.id == cart_item_id).first()
+ 
+    @staticmethod
+    def update_cart_item(db: Session, cart_item_id: int, quantity: int):
+        cart_item = db.query(models.CartItem).filter(models.CartItem.id == cart_item_id).first()
         if not cart_item:
-            raise HTTPException(status_code=404, detail="Cart item not found")
-
+            return None
+ 
         cart_item.quantity = quantity
         db.commit()
         db.refresh(cart_item)
         return cart_item
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Remove Item from Cart
-@app.delete("/{user_id}/remove/{cart_item_id}")
-def remove_cart_item(user_id: int, cart_item_id: int,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        cart_item = db.query(CartItem).filter(CartItem.id == cart_item_id).first()
-        if not cart_item:
-            raise HTTPException(status_code=404, detail="Cart item not found")
-
-        db.delete(cart_item)
+ 
+    @staticmethod
+    def remove_cart_item(db: Session, cart_item_id: int):
+        cart_item = db.query(models.CartItem).filter(models.CartItem.id == cart_item_id).first()
+        if cart_item:
+            db.delete(cart_item)
+            db.commit()
+            return True
+        return False
+ 
+ 
+class OrderCRUD:
+    @staticmethod
+    def place_order(db: Session, user_id: int, cart_id: int):
+        cart_items = db.query(models.CartItem).filter(models.CartItem.cart_id == cart_id).all()
+        if not cart_items:
+            return None  
+ 
+        total_price = Decimal(0)
+        for item in cart_items:
+            product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
+            if product is None or product.stock < item.quantity:
+                return None  
+            total_price += product.price * item.quantity
+ 
+        order = models.Order(user_id=user_id, total_price=total_price)
+        db.add(order)
         db.commit()
-        return {"message": "Cart item removed"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/users/", response_model=UserInDB)
-def create_user_endpoint(user: UserCreate,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        db_user = get_user_by_username(db, user.username)
-        if db_user:
-            raise HTTPException(status_code=400, detail="Username already registered")
-        return create_user(db=db, username=user.username, email=user.email, password=user.password)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/users/{user_id}", response_model=UserInDB)
-def get_user_endpoint(user_id: int,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        db_user = get_user_by_id(db, user_id)
-        if db_user is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        return db_user
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/users/{user_id}", response_model=UserInDB)
-def update_user_endpoint(user_id: int, user: UserUpdate,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        db_user = update_user(db, user_id=user_id, username=user.username, email=user.email, password=user.password)
-        if db_user is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        return db_user
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/users/{user_id}",  response_model=UserInDB)
-def delete_user_endpoint(user_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        db_user = delete_user(db, user_id)
-        if db_user is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        return db_user
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/checkout/{user_id}", response_model=OrderInDB)
-def checkout(user_id: int, cart_id: int,token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        order = place_order(db, user_id, cart_id)
-        if order is None:
-            raise HTTPException(status_code=400, detail="Not enough stock or cart is empty")
+        db.refresh(order)
+ 
+        for item in cart_items:
+            product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
+            order_item = models.OrderItem(
+                order_id=order.id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                price=product.price
+            )
+            db.add(order_item)
+            product.stock -= item.quantity
+ 
+        db.commit()
+        db.query(models.CartItem).filter(models.CartItem.cart_id == cart_id).delete()
+        db.commit()
         return order
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+ 
